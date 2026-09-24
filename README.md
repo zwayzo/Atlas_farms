@@ -67,7 +67,22 @@ Planned farm mix is for expected-versus-actual comparison only; it is never allo
 
 ## Optional model configuration
 
-Copy `backend/.env.example` to `backend/.env` and set `GROQ_API_KEY` locally if you want to try the hosted explanation path. Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+`./start.sh` creates `backend/.env` from `.env.example` if missing. Set `GROQ_API_KEY` locally if you want hosted explanations; `GROQ_MODEL` selects the model (default: `openai/gpt-oss-20b`). Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+
+If Groq returns `model_not_found`, list the model IDs reported for your key and set `GROQ_MODEL` in `backend/.env` to a supported chat model from that list:
+
+```bash
+cd backend
+.venv/bin/python - <<'PY'
+from dotenv import load_dotenv
+load_dotenv('.env')
+from groq import Groq
+for model in Groq().models.list().data:
+    print(model.id)
+PY
+```
+
+Restart `./start.sh` after changing `.env`. The model list prints IDs only; never paste your key in a terminal command or issue report.
 
 ## Submission notes
 
