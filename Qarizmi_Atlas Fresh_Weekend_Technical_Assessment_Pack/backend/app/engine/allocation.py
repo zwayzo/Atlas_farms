@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, station_df: pd.DataFrame):
+def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, station_df: pd.DataFrame, ref_prices: dict):
     # 1. Capacité de la station
     station_capacity = float(station_df['export_conditioning_capacity_t'].iloc[0])
     station_capacity_remaining = station_capacity
@@ -103,8 +103,8 @@ def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, stat
         }
 
     # 5. Marché local pour le reliquat non exporté
-    ref_prices = {'A': 150.0, 'B': 100.0, 'C': 75.0, 'D': 50.0}
-    local_ratio = 0.10
+    # ref_prices = {'A': 150.0, 'B': 100.0, 'C': 75.0, 'D': 50.0}
+    local_ratio = float(station_df['local_market_ratio'].iloc[0])
     local_residual = []
     total_local_vol = 0.0
     total_local_val = 0.0
@@ -120,13 +120,27 @@ def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, stat
             })
             total_local_vol += float(tonnes_left)
             total_local_val += valeur
-
+        # Expected vs actual totals (needed for the "plan vs actual" KPIs)
+    expected_plan_t = float(farms_df['expected_daily_capacity_t'].sum())
+    actual_received_t = float(sum(
+        float(row[f'actual_{seg}_t'])
+        for _, row in farms_df.iterrows()
+        for seg in ['A', 'B', 'C', 'D']
+    ))
+    export_revenue_eur = float(sum(a['revenue_eur'] for a in allocations))
+    exported_t = station_capacity - station_capacity_remaining
+    export_rate_pct = (exported_t / actual_received_t * 100) if actual_received_t > 0 else 0.0
     return {
         "kpis": {
+            "expected_plan_t": expected_plan_t,
+            "actual_received_t": actual_received_t,
             "station_capacity_t": float(station_capacity),
             "station_capacity_remaining_t": float(station_capacity_remaining),
+            "exported_t": float(exported_t),
+            "export_rate_pct": export_rate_pct,
+            "export_revenue_eur": export_revenue_eur,
             "local_residual_volume_t": float(total_local_vol),
-            "local_residual_value_eur": float(total_local_val)
+            "local_residual_value_eur": float(total_local_val),
         },
         "allocations": allocations,
         "client_statuses": client_statuses,

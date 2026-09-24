@@ -1,46 +1,119 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import { Upload, CheckCircle, AlertCircle, Package, Truck, Euro } from 'lucide-react';
+import { useState } from 'react';
+import KpiBand from './components/KpiBand';
+import ProductionView from './components/ProductionView';
+import CommercialView from './components/CommercialView';
+import AllocationTable from './components/AllocationTable';
+import AssistantPanel from './components/AssistantPanel';
+
+const API_URL = '/api/plan/seed';
+const TABS = ['Overview', 'Production', 'Commercial', 'Allocations', 'Assistant'];
 
 export default function App() {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
+  const [status, setStatus] = useState('empty'); // empty | loading | ready | error
+  const [plan, setPlan] = useState(null);
+  const [farms, setFarms] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [tab, setTab] = useState('Overview');
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setError(null);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file) {
-      setError("Veuillez sélectionner un fichier Excel.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
+  async function loadSeed() {
+    setStatus('loading');
+    setErrorMsg('');
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/plan', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      setResult(response.data);
-    } catch (err) {
-      const msg = err.response?.data?.detail || "Une erreur est survenue lors du traitement.";
-      setError(msg);
-    } finally {
-      setLoading(false);
+      // Assumes a preloaded seed file on the server. If you require an
+      // upload instead, swap this for a <input type="file"> + FormData post.
+      const res = await fetch(API_URL, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Server error (${res.status})`);
+      }
+      const data = await res.json();
+      setPlan(data);
+      setFarms(data.farms || []);
+      setClients(data.clients || []);
+      setStatus('ready');
+    } catch (e) {
+      setErrorMsg(e.message || 'Something went wrong loading the plan.');
+      setStatus('error');
     }
-  };
+  }
 
   return (
+    <div>
+      <div className="topbar">
+        <div className="app-shell" style={{ padding: 0 }}>
+          <h1>Atlas Fresh — Daily Export Planner</h1>
+          <p>Production × Commercial decision support. Fictional data.</p>
+        </div>
+      </div>
+
+      <div className="app-shell">
+        {status === 'empty' && (
+          <div className="state-box">
+            <p>No plan loaded yet.</p>
+            <button onClick={loadSeed}>Load today's snapshot</button>
+          </div>
+        )}
+
+        {status === 'loading' && (
+          <div className="state-box"><p>Loading and validating today's data…</p></div>
+        )}
+
+        {status === 'error' && (
+          <div className="state-box error">
+            <p><strong>Could not build the plan.</strong></p>
+            <p>{errorMsg}</p>
+            <button onClick={loadSeed}>Retry</button>
+          </div>
+        )}
+
+        {status === 'ready' && plan && (
+          <>
+            <KpiBand plan={plan} />
+
+            <div className="tabs">
+              {TABS.map(t => (
+                <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'Overview' && (
+              <div className="card">
+                <div className="card-header">
+                  <h2>Today in one minute</h2>
+                  <p>Production expected more than it received; the station capped exports at 500 t.</p>
+                </div>
+                <div className="card-body" style={{ paddingBottom: 16 }}>
+                  <p>
+                    Farms delivered less than planned overall. The export station processed its full
+                    capacity, and every partial or unserved client has a stated reason in the
+                    Commercial tab. What could not be exported is shown, farm by farm, on the
+                    Allocations tab — that fruit sells for only 10% of its normal price.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {tab === 'Production' && (
+              <ProductionView farms={farms} localResidual={plan.local_residual} />
+            )}
+
+            {tab === 'Commercial' && (
+              <CommercialView clients={clients} statuses={plan.client_statuses} />
+            )}
+
+            {tab === 'Allocations' && (
+              <AllocationTable allocations={plan.allocations} localResidual={plan.local_residual} />
+            )}
+
+            {tab === 'Assistant' && (
+              <AssistantPanel plan={plan} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
