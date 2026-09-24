@@ -9,6 +9,7 @@ Decision support for a fictional daily Production–Commercial committee. The Fa
 
 ## Run locally
 
+
 From the repository root, start both servers with one command:
 
 ```bash
@@ -20,6 +21,7 @@ The first run creates a Python 3.12 virtual environment, installs backend and fr
 The script never overwrites an existing `.env`. The app reads `backend/.env` on startup; `GROQ_API_KEY` is optional. If you add a newly issued key, restart the script. Do not reuse a previously exposed key.
 
 Manual launch, when you want each server in its own terminal:
+
 
 ```bash
 cd backend
@@ -54,7 +56,8 @@ npm run build
 
 The baseline automated check covers 600 t planned, 560 t received, 500 t exported, 60 t local, €549,500 export revenue, €4,500 local value, and the three partial clients C02, C09, C08. Other tests cover allocation ordering, compatibility, capacity, invalid Excel values, and assistant output.
 
-If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run `./start.sh` from the repository root. If `python3.12` is missing, install Python 3.12 first. Use `backend/.venv/bin/python --version` to confirm the selected interpreter.
+If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run the three backend commands above from `backend/`. If `python3.12` is missing, install Python 3.12 first. Use `.venv/bin/python --version` to confirm the selected interpreter.
+
 
 ## Policy and architecture
 
