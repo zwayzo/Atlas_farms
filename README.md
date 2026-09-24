@@ -9,7 +9,17 @@ Decision support for a fictional daily Production–Commercial committee. The Fa
 
 ## Run locally
 
-From the repository root, in terminal 1. On macOS, use Python 3.12 to create a fresh virtual environment, then call its Python explicitly:
+From the repository root, start both servers with one command:
+
+```bash
+./start.sh
+```
+
+The first run creates a Python 3.12 virtual environment, installs backend and frontend dependencies, and creates `backend/.env` from `.env.example` if it does not exist. Later runs reuse them. Open `http://127.0.0.1:5173` and press **Load today's snapshot**. Press Ctrl+C in the terminal to stop both servers. If Python 3.12 or Node.js/npm is missing, the script shows what to install.
+
+The script never overwrites an existing `.env`. The app reads `backend/.env` on startup; `GROQ_API_KEY` is optional. If you add a newly issued key, restart the script. Do not reuse a previously exposed key.
+
+Manual launch, when you want each server in its own terminal:
 
 ```bash
 cd backend
@@ -18,7 +28,7 @@ python3.12 -m venv --clear .venv
 .venv/bin/python -m uvicorn app.main:app --reload
 ```
 
-In terminal 2:
+In the second terminal:
 
 ```bash
 cd frontend
@@ -26,7 +36,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL Vite prints (normally `http://localhost:5173`) and select **Load today's snapshot**. Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
+Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
 
 ## Tests and build
 
@@ -44,7 +54,7 @@ npm run build
 
 The baseline automated check covers 600 t planned, 560 t received, 500 t exported, 60 t local, €549,500 export revenue, €4,500 local value, and the three partial clients C02, C09, C08. Other tests cover allocation ordering, compatibility, capacity, invalid Excel values, and assistant output.
 
-If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run the three backend commands above from `backend/`. If `python3.12` is missing, install Python 3.12 first. Use `.venv/bin/python --version` to confirm the selected interpreter.
+If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run `./start.sh` from the repository root. If `python3.12` is missing, install Python 3.12 first. Use `backend/.venv/bin/python --version` to confirm the selected interpreter.
 
 ## Policy and architecture
 
