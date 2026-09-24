@@ -8,7 +8,7 @@ def validate_data(file_path: str):
             return False
         try:
             val_float = float(val)
-            if val_float < 0:
+            if not np.isfinite(val_float) or val_float < 0:
                 return False
             return np.isclose(val_float % 5, 0) or np.isclose(val_float % 5, 5)
         except (ValueError, TypeError):
@@ -19,7 +19,7 @@ def validate_data(file_path: str):
             return False
         try:
             val_float = float(val)
-            if val_float < 0:
+            if not np.isfinite(val_float) or val_float < 0:
                 return False
             return np.isclose(val_float, round(val_float, 1))
         except (ValueError, TypeError):
@@ -38,10 +38,15 @@ def validate_data(file_path: str):
 
     # 1. FARMS
     farms_raw, farms_hdr_idx = find_header_and_read('Farms', 'farm_id')
-    farms = farms_raw[farms_raw['farm_id'].notna() & farms_raw['farm_id'].astype(str).str.startswith('F')].copy()
+    # The Farms sheet contains only data rows below the header. Do not filter
+    # missing/invalid IDs away before checking them.
+    farms = farms_raw.dropna(how='all').copy()
 
     if farms['farm_id'].isna().any():
         raise ValueError("[Farms Sheet]: Missing farm_id detected.")
+    farms['farm_id'] = farms['farm_id'].astype(str).str.strip()
+    if (~farms['farm_id'].str.fullmatch(r'F\d+')).any():
+        raise ValueError("[Farms Sheet]: Invalid farm_id detected.")
     if farms['farm_id'].duplicated().any():
         dups = farms[farms['farm_id'].duplicated()]['farm_id'].tolist()
         raise ValueError(f"[Farms Sheet]: Duplicate farm_id found: {dups}")
@@ -53,7 +58,14 @@ def validate_data(file_path: str):
         if not is_valid_capacity(row['expected_daily_capacity_t']):
             raise ValueError(f"[Farms Sheet - Row {excel_row}, ID: {fid}]: Invalid expected capacity.")
 
-        mix_sum = sum([float(row[c]) for c in ['expected_A_pct', 'expected_B_pct', 'expected_C_pct', 'expected_D_pct']])
+        mix_columns = ['expected_A_pct', 'expected_B_pct', 'expected_C_pct', 'expected_D_pct']
+        try:
+            mix = [float(row[c]) for c in mix_columns]
+        except (ValueError, TypeError):
+            raise ValueError(f"[Farms Sheet - Row {excel_row}, ID: {fid}]: Invalid mix fraction.")
+        if not all(np.isfinite(v) and 0 <= v <= 1 for v in mix):
+            raise ValueError(f"[Farms Sheet - Row {excel_row}, ID: {fid}]: Mix fractions must be between 0 and 1.")
+        mix_sum = sum(mix)
         if not np.isclose(mix_sum, 1.0):
             raise ValueError(f"[Farms Sheet - Row {excel_row}, ID: {fid}]: Mix percentages sum to {mix_sum:.4f}, must be 1.0.")
 
@@ -63,10 +75,13 @@ def validate_data(file_path: str):
 
     # 2. CLIENTS
     clients_raw, clients_hdr_idx = find_header_and_read('Clients', 'client_id')
-    clients = clients_raw[clients_raw['client_id'].notna() & clients_raw['client_id'].astype(str).str.startswith('C')].copy()
+    clients = clients_raw.dropna(how='all').copy()
 
     if clients['client_id'].isna().any():
         raise ValueError("[Clients Sheet]: Missing client_id detected.")
+    clients['client_id'] = clients['client_id'].astype(str).str.strip()
+    if (~clients['client_id'].str.fullmatch(r'C\d+')).any():
+        raise ValueError("[Clients Sheet]: Invalid client_id detected.")
     if clients['client_id'].duplicated().any():
         dups = clients[clients['client_id'].duplicated()]['client_id'].tolist()
         raise ValueError(f"[Clients Sheet]: Duplicate client_id found: {dups}")
@@ -81,16 +96,33 @@ def validate_data(file_path: str):
             raise ValueError(f"[Clients Sheet - Row {excel_row}, ID: {cid}]: Invalid requested_segment.")
         if not is_multiple_of_5(row['demand_t']):
             raise ValueError(f"[Clients Sheet - Row {excel_row}, ID: {cid}]: demand_t is not a non-negative multiple of 5t.")
+        try:
+            price = float(row['export_price_per_t_eur'])
+        except (ValueError, TypeError):
+            price = float('nan')
+        if not np.isfinite(price) or price <= 0:
+            raise ValueError(f"[Clients Sheet - Row {excel_row}, ID: {cid}]: Invalid export price.")
 
     # 3. STATION
     station_raw, station_hdr_idx = find_header_and_read('Station', 'station_id')
-    station = station_raw[station_raw['station_id'].notna() & station_raw['station_id'].astype(str).str.startswith('STATION')].copy()
+    # The first blank row separates the station record from notes and the
+    # segment reference-price table further down this sheet.
+    first_blank = station_raw['station_id'].isna().idxmax() if station_raw['station_id'].isna().any() else len(station_raw)
+    station = station_raw.iloc[:first_blank].copy()
+    if len(station) != 1 or str(station.iloc[0]['station_id']).strip() != 'STATION-01':
+        raise ValueError("[Station Sheet]: Expected one valid station record (STATION-01).")
 
     for idx, row in station.iterrows():
         sid = str(row['station_id']).strip()
         excel_row = idx + station_hdr_idx + 2
         if not is_multiple_of_5(row['export_conditioning_capacity_t']):
             raise ValueError(f"[Station Sheet - Row {excel_row}, ID: {sid}]: Capacity is not a non-negative multiple of 5t.")
+        try:
+            ratio = float(row['local_market_ratio'])
+        except (ValueError, TypeError):
+            ratio = float('nan')
+        if not np.isfinite(ratio) or not 0 <= ratio <= 1:
+            raise ValueError(f"[Station Sheet - Row {excel_row}, ID: {sid}]: local_market_ratio must be between 0 and 1.")
 
     return farms, clients, station
 
@@ -127,8 +159,10 @@ def read_and_validate_reference_prices(file_path):
             price_f = float(price)
         except (ValueError, TypeError):
             raise ValueError(f"[Validation Error] Sheet 'Station': reference price for segment '{seg}' is not numeric.")
-        if price_f <= 0:
+        if not np.isfinite(price_f) or price_f <= 0:
             raise ValueError(f"[Validation Error] Sheet 'Station': reference price for segment '{seg}' must be positive, got {price_f}.")
+        if seg in prices:
+            raise ValueError(f"[Validation Error] Sheet 'Station': duplicate reference price for segment '{seg}'.")
         prices[seg] = price_f
         r += 1
 

@@ -2,8 +2,6 @@ import os
 import json
 import re
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-
 QUESTION_PROMPTS = {
     "at_risk": "Which clients are at risk and why?",
     "farm_gaps": "Which farm/segment gaps matter most today?",
@@ -24,11 +22,14 @@ Rules:
 
 
 def is_configured() -> bool:
-    return bool(GROQ_API_KEY)
+    return bool(os.environ.get("GROQ_API_KEY"))
 
 
 def _extract_valid_ids(context: dict) -> set:
     ids = set()
+    for row in context.get("farms") or []:
+        if row.get("farm_id"):
+            ids.add(row["farm_id"])
     for cid in (context.get("client_statuses") or {}).keys():
         ids.add(cid)
     for row in context.get("local_residual") or []:
@@ -54,10 +55,12 @@ def ask_assistant(question_id: str, context: dict) -> dict:
         "local_residual": context.get("local_residual"),
         "kpis": context.get("kpis"),
     }
+    if question_id == 'farm_gaps':
+        payload_context['farms'] = context.get('farms')
 
     try:
         from groq import Groq
-        client = Groq(api_key=GROQ_API_KEY)
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
         resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",

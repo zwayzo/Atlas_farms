@@ -83,14 +83,14 @@ export default function App() {
               <div className="card">
                 <div className="card-header">
                   <h2>Today in one minute</h2>
-                  <p>Production expected more than it received; the station capped exports at 500 t.</p>
+                  <p>Production planned {plan.kpis.expected_plan_t} t and received {plan.kpis.actual_received_t} t. The station exported {plan.kpis.exported_t} t out of {plan.kpis.station_capacity_t} t capacity.</p>
                 </div>
                 <div className="card-body" style={{ paddingBottom: 16 }}>
                   <p>
-                    Farms delivered less than planned overall. The export station processed its full
-                    capacity, and every partial or unserved client has a stated reason in the
+                    Overall variance against the farm plan is {plan.kpis.actual_received_t - plan.kpis.expected_plan_t} t. The export station processed {plan.kpis.exported_t} t,
+                    and every partial or unserved client has a stated reason in the
                     Commercial tab. What could not be exported is shown, farm by farm, on the
-                    Allocations tab — that fruit sells for only 10% of its normal price.
+                    Allocations tab — that fruit sells for only {((plan.kpis.local_market_ratio ?? 0.1) * 100).toLocaleString()}% of its reference price.
                   </p>
                 </div>
               </div>

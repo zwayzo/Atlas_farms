@@ -8,6 +8,13 @@ export default function ProductionView({ farms, localResidual = [] }) {
   });
 
   const seg = ['A', 'B', 'C', 'D'];
+  const totals = Object.fromEntries(seg.map(s => [s, {
+    actual: farms.reduce((n, f) => n + Number(f[`actual_${s}_t`] || 0), 0),
+    expected: farms.reduce((n, f) => n + Number(f.expected_daily_capacity_t || 0) * Number(f[`expected_${s}_pct`] || 0), 0),
+  }]));
+  const expectedTotal = farms.reduce((n, f) => n + Number(f.expected_daily_capacity_t || 0), 0);
+  const actualTotal = seg.reduce((n, s) => n + totals[s].actual, 0);
+  const localTotal = localResidual.reduce((n, r) => n + Number(r.remaining_tonnes), 0);
 
   return (
     <div className="card">
@@ -21,7 +28,7 @@ export default function ProductionView({ farms, localResidual = [] }) {
             <tr>
               <th>Farm</th>
               <th>Expected</th>
-              {seg.map(s => <th key={s}><span className={`seg-dot seg-${s}`} />{s} actual</th>)}
+              {seg.map(s => <th key={s}><span className={`seg-dot seg-${s}`} />{s} actual / plan / gap</th>)}
               <th>Total actual</th>
               <th>Variance</th>
               <th>To local market</th>
@@ -38,7 +45,10 @@ export default function ProductionView({ farms, localResidual = [] }) {
                   <td><strong>{f.farm_id}</strong></td>
                   <td className="num">{expected.toFixed(1)} t</td>
                   {seg.map(s => (
-                    <td key={s} className="num">{Number(f[`actual_${s}_t`] || 0)} t</td>
+                    <td key={s} className="num">
+                      {Number(f[`actual_${s}_t`] || 0)} t<br />
+                      <small>plan {(expected * Number(f[`expected_${s}_pct`] || 0)).toFixed(1)} · gap {(Number(f[`actual_${s}_t`] || 0) - expected * Number(f[`expected_${s}_pct`] || 0)).toFixed(1)} t</small>
+                    </td>
                   ))}
                   <td className="num"><strong>{actualTotal} t</strong></td>
                   <td className={`num ${variance < 0 ? 'variance-neg' : 'variance-pos'}`}>
@@ -49,6 +59,16 @@ export default function ProductionView({ farms, localResidual = [] }) {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">TOTAL</th>
+              <td className="num">{expectedTotal.toFixed(1)} t</td>
+              {seg.map(s => <td key={s} className="num"><strong>{totals[s].actual} t</strong><br /><small>plan {totals[s].expected.toFixed(1)} · gap {(totals[s].actual - totals[s].expected).toFixed(1)} t</small></td>)}
+              <td className="num"><strong>{actualTotal} t</strong></td>
+              <td className="num">{(actualTotal - expectedTotal).toFixed(1)} t</td>
+              <td className="num">{localTotal} t</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

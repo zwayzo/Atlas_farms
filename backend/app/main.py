@@ -1,12 +1,12 @@
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import tempfile
 from app.engine.validators import validate_data, read_and_validate_reference_prices
 from app.engine.allocation import run_allocation_engine
-from app.engine.assistant import ask_assistant, is_configured
 from dotenv import load_dotenv
 load_dotenv()
-# print("GROQ_API_KEY loaded:", bool(os.environ.get("GROQ_API_KEY")))
+from app.engine.assistant import ask_assistant, is_configured
 from fastapi import FastAPI, UploadFile, File, HTTPException
 
 app = FastAPI(title="API Planification Daily Apple Export - Atlas Fresh")
@@ -38,10 +38,12 @@ async def generate_plan_from_seed():
 
 @app.post("/api/plan")
 async def generate_plan(file: UploadFile = File(...)):
-    temp_filename = f"temp_{file.filename}"
+    if not file.filename or not file.filename.lower().endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Upload an .xlsx workbook.")
+    temp_filename = None
     try:
-        # Save temp file
-        with open(temp_filename, "wb") as buffer:
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as buffer:
+            temp_filename = buffer.name
             shutil.copyfileobj(file.file, buffer)
 
         # 1. Validation & Parsing des DataFrames
@@ -65,7 +67,7 @@ async def generate_plan(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur interne : {str(e)}")
     finally:
-        if os.path.exists(temp_filename):
+        if temp_filename and os.path.exists(temp_filename):
             os.remove(temp_filename)
 
 @app.post("/api/assistant")
