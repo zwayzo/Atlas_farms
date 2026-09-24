@@ -99,6 +99,7 @@ def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, stat
             'demand_t': float(demand),
             'allocated_t': float(allocated_qty),
             'remaining_demand_t': float(remaining_demand),
+            'revenue_eur': float(allocated_qty * price),
             'reason': reason
         }
 
@@ -141,6 +142,8 @@ def run_allocation_engine(farms_df: pd.DataFrame, clients_df: pd.DataFrame, stat
             "export_revenue_eur": export_revenue_eur,
             "local_residual_volume_t": float(total_local_vol),
             "local_residual_value_eur": float(total_local_val),
+            "local_market_ratio": local_ratio,
+            "total_value_eur": export_revenue_eur + float(total_local_val),
         },
         "allocations": allocations,
         "client_statuses": client_statuses,

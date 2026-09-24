@@ -1,29 +1,69 @@
-# Qarizmi weekend technical assessment
+# Atlas Fresh — Daily Apple Export Planner
 
-This pack contains a fully synthetic Production × Commercial planning case. It is the same for every candidate.
+Decision support for a fictional daily Production–Commercial committee. The FastAPI server validates the supplied Excel workbook and applies a deterministic allocation policy; the React workspace displays the resulting production gaps, client orders, farm-to-client allocations, and local residual. Final execution remains a human decision.
 
-Atlas Fresh produces apples through 20 farms, classifies them into quality Segments A/B/C/D, conditions export fruit in one 500 t/day station and sells to 10 clients with different quality rules and prices. Before the season, Commercial sells a client program while Production sets an expected daily capacity and segment mix for each farm. The supplied data deliberately contains no farm-to-client mapping. Segment A, the hardest quality to produce, is below target in the daily snapshot.
+## Requirements
 
-Actual farm production differs from plan every day. Production and Commercial therefore meet to compare plan with actual receipts, decide which farm-segment volumes should serve which clients, and make visible what must fall back to the local market at only 10% of its segment reference export price. Creating and explaining that daily farm-to-client allocation is part of your assignment. Your task is to turn the manual preparation into one clear decision-support workspace while keeping final approval with the teams.
+- Python 3.11+ and Node.js 20.19+ or 22.12+
+- No paid service or API key is needed for the plan or the deterministic assistant summary.
 
-## Start here
+## Run locally
 
-1. Read `Qarizmi_Universal_Weekend_Technical_Assessment.pdf`.
-2. Use `Atlas_Fresh_Production_Commercial_Data.xlsx` as the authoritative input.
-3. Build the smallest complete product that satisfies the mandatory daily workflow.
-4. Stop after 10–12 hours and document intentional omissions.
+From the repository root, in terminal 1:
 
-## Files
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv/Scripts/activate
+python -m pip install -r app/requirements.txt
+uvicorn app.main:app --reload
+```
 
-- `Qarizmi_Universal_Weekend_Technical_Assessment.pdf` — candidate brief.
-- `Qarizmi_Universal_Weekend_Technical_Assessment.docx` — editable copy of the same brief.
-- `Atlas_Fresh_Production_Commercial_Data.xlsx` — fictional input workbook and baseline checks.
+In terminal 2:
 
-## Submit
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-- repository URL;
-- 3–5 minute walkthrough URL;
-- optional live URL;
-- approximate time spent and any access instructions.
+Open the URL Vite prints (normally `http://localhost:5173`) and select **Load today's snapshot**. Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
 
-Do not send credentials or use real client data. The core project must run without a paid service.
+## Tests and build
+
+With the backend virtual environment active, from `backend/`:
+
+```bash
+python -m pytest -q tests
+```
+
+From `frontend/`:
+
+```bash
+npm run build
+```
+
+The baseline automated check covers 600 t planned, 560 t received, 500 t exported, 60 t local, €549,500 export revenue, €4,500 local value, and the three partial clients C02, C09, C08. Other tests cover allocation ordering, compatibility, capacity, invalid Excel values, and assistant output.
+
+## Policy and architecture
+
+- `backend/app/engine/validators.py`: parses the supplied workbook, checks IDs, segment rules, quantity increments and station/reference data.
+- `backend/app/engine/allocation.py`: server-side policy. Clients are ordered by price descending then ID; compatible supply is ordered by smallest quality upgrade then farm ID. It allocates in 5 t steps within available supply, demand and station capacity. Unexported supply goes to the local market at its segment reference price times the local ratio.
+- `backend/app/main.py`: `/api/plan/seed`, `/api/plan` and read-only `/api/assistant` routes.
+- `frontend/src/`: a single workspace for production, commercial, allocation and assistant views.
+
+Planned farm mix is for expected-versus-actual comparison only; it is never allocated as real supply. Local reference prices do not determine client priority. The assistant never changes the plan.
+
+## Optional model configuration
+
+Copy `backend/.env.example` to `backend/.env` and set `GROQ_API_KEY` locally if you want to try the hosted explanation path. Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+
+## Submission notes
+
+- AI assistance: used for code review, bug fixes, and the automated test suite. Verify and describe your own use of AI before submission.
+- Approximate total time spent: **[candidate: fill in before sending]**.
+- Current limitations: the hosted model path requires a user-provided key. Model output rejects unknown farm/client IDs but does not fully check every generated numeric claim; review model explanations before making a decision. There is an API workbook upload but no upload control in the interface.
+- Intentional omissions: deployment and forecasting across multiple days; this assessment uses one supplied daily snapshot. **[candidate: adjust to reflect your actual timebox]**.
+- Next three production steps: (1) show segment-level planned/actual gaps and connect them to client shortages; (2) move assistant context validation and fallback summaries fully server-side, with clearer provider error states; (3) add operational access controls and monitoring.
+
+The candidate brief and original supplied workbook are included in the repository root for reference. Record a 3–5 minute walkthrough and include its URL when submitting.

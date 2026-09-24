@@ -2,7 +2,7 @@
 //                      demand_t, export_price_per_t_eur }]
 // statuses: { [client_id]: { status, demand_t, allocated_t, remaining_demand_t, reason } }
 const REASON_LABEL = {
-  STATION_CAPACITY_REACHED: 'Station at 500t capacity',
+  STATION_CAPACITY_REACHED: 'Station capacity reached',
   INSUFFICIENT_COMPATIBLE_SEGMENT: 'Not enough compatible fruit left',
 };
 
@@ -29,6 +29,7 @@ export default function CommercialView({ clients, statuses }) {
               <th>Allocated</th>
               <th>Remaining</th>
               <th>Price/t</th>
+              <th>Revenue</th>
               <th>Status</th>
               <th>Reason</th>
             </tr>
@@ -44,6 +45,7 @@ export default function CommercialView({ clients, statuses }) {
                   <td className="num">{Number(st.allocated_t ?? 0)} t</td>
                   <td className="num">{Number(st.remaining_demand_t ?? 0)} t</td>
                   <td className="num">€{Number(c.export_price_per_t_eur).toLocaleString()}</td>
+                  <td className="num">€{Number(st.revenue_eur || 0).toLocaleString()}</td>
                   <td><span className={`badge ${BADGE_CLASS[st.status] || ''}`}>{st.status}</span></td>
                   <td>{st.reason ? REASON_LABEL[st.reason] || st.reason : '—'}</td>
                 </tr>

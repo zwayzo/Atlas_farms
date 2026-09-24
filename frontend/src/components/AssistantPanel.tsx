@@ -9,7 +9,7 @@ const QUESTIONS = [
 // Deterministic, server-data-only fallback. Used whenever no LLM key/endpoint
 // is configured, or the call fails — never fabricates a number or an ID.
 function deterministicAnswer(questionId, plan) {
-  const { client_statuses = {}, allocations = [], local_residual = [] } = plan;
+  const { client_statuses = {}, local_residual = [], farms = [] } = plan;
 
   if (questionId === 'at_risk') {
     const atRisk = Object.entries(client_statuses).filter(([, s]) => s.status !== 'COMPLETE');
@@ -21,13 +21,13 @@ function deterministicAnswer(questionId, plan) {
   }
 
   if (questionId === 'farm_gaps') {
-    const bySeg = {};
-    local_residual.forEach(r => { bySeg[r.segment] = (bySeg[r.segment] || 0) + Number(r.remaining_tonnes); });
-    const worstFarms = [...local_residual].sort((a, b) => b.remaining_tonnes - a.remaining_tonnes).slice(0, 3);
-    const text = worstFarms.length
-      ? `Largest unexported balances: ${worstFarms.map(f => `${f.farm_id} (${f.segment}, ${f.remaining_tonnes} t)`).join(', ')}.`
-      : 'No farm currently has unexported balance.';
-    return { text, ids: worstFarms.map(f => f.farm_id) };
+    const gaps = farms.flatMap(f => 'ABCD'.split('').map(segment => ({
+      farm_id: f.farm_id, segment,
+      gap: Number(f[`actual_${segment}_t`]) - Number(f.expected_daily_capacity_t) * Number(f[`expected_${segment}_pct`]),
+    }))).filter(row => row.gap < 0).sort((a, b) => a.gap - b.gap).slice(0, 3);
+    return gaps.length
+      ? { text: `Largest farm/segment shortfalls against plan: ${gaps.map(g => `${g.farm_id} Segment ${g.segment} (${g.gap.toFixed(1)} t)`).join(', ')}.`, ids: [...new Set(gaps.map(g => g.farm_id))] }
+      : { text: 'No farm/segment shortfalls against plan are recorded.', ids: [] };
   }
 
   if (questionId === 'local_market') {
@@ -35,7 +35,7 @@ function deterministicAnswer(questionId, plan) {
     const totalVal = local_residual.reduce((s, r) => s + Number(r.local_value_eur), 0);
     const farmIds = local_residual.map(r => r.farm_id);
     return {
-      text: `${totalVol} t are going to the local market at 10% of reference price, worth €${totalVal.toLocaleString()}. Source farms: ${farmIds.join(', ') || 'none'}.`,
+      text: `${totalVol} t are going to the local market at ${((plan.kpis.local_market_ratio ?? 0.1) * 100).toLocaleString()}% of reference price, worth €${totalVal.toLocaleString()}. Source farms: ${farmIds.join(', ') || 'none'}.`,
       ids: farmIds,
     };
   }
@@ -47,6 +47,7 @@ export default function AssistantPanel({ plan }) {
   const [answer, setAnswer] = useState(null);
   const [activeQ, setActiveQ] = useState(null);
   const [mode, setMode] = useState(null); // 'llm' | 'deterministic' | 'error'
+  const [fallbackReason, setFallbackReason] = useState('');
 
   async function ask(q) {
     setActiveQ(q.id);
@@ -61,6 +62,7 @@ export default function AssistantPanel({ plan }) {
         body: JSON.stringify({
           question: q.id,
           client_statuses: plan.client_statuses,
+          farms: q.id === 'farm_gaps' ? plan.farms : undefined,
           local_residual: plan.local_residual,
           kpis: plan.kpis,
         }),
@@ -69,7 +71,7 @@ export default function AssistantPanel({ plan }) {
         // convention: backend returns this when no key/model is configured
         throw new Error('NO_KEY');
       }
-      if (!res.ok) throw new Error('REQUEST_FAILED');
+      if (!res.ok) throw new Error(res.status === 502 ? 'PROVIDER_FAILURE' : 'REQUEST_FAILED');
       const data = await res.json();
       setMode('llm');
       setAnswer({ text: data.answer, ids: data.evidence_ids || [] });
@@ -77,6 +79,9 @@ export default function AssistantPanel({ plan }) {
       // Honest fallback — never show a fake AI answer.
       const fallback = deterministicAnswer(q.id, plan);
       setMode('deterministic');
+      setFallbackReason(e.message === 'NO_KEY' ? 'No AI model configured' :
+        e.message === 'PROVIDER_FAILURE' ? 'AI provider unavailable or returned invalid output' :
+        'Assistant request failed');
       setAnswer(fallback);
     }
   }
@@ -102,7 +107,7 @@ export default function AssistantPanel({ plan }) {
           <div className={`assistant-answer ${mode === 'deterministic' ? 'no-key' : ''}`}>
             {mode === 'deterministic' && (
               <p style={{ margin: '0 0 8px', fontWeight: 600 }}>
-                No AI model configured — showing a deterministic summary from the computed plan.
+                {fallbackReason} — showing a deterministic summary from the computed plan.
               </p>
             )}
             <p style={{ whiteSpace: 'pre-line', margin: 0 }}>{answer.text}</p>
