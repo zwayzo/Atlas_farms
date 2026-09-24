@@ -9,7 +9,19 @@ Decision support for a fictional daily Production–Commercial committee. The Fa
 
 ## Run locally
 
-From the repository root, in terminal 1. On macOS, use Python 3.12 to create a fresh virtual environment, then call its Python explicitly:
+
+From the repository root, start both servers with one command:
+
+```bash
+./start.sh
+```
+
+The first run creates a Python 3.12 virtual environment, installs backend and frontend dependencies, and creates `backend/.env` from `.env.example` if it does not exist. Later runs reuse them. Open `http://127.0.0.1:5173` and press **Load today's snapshot**. Press Ctrl+C in the terminal to stop both servers. If Python 3.12 or Node.js/npm is missing, the script shows what to install.
+
+The script never overwrites an existing `.env`. The app reads `backend/.env` on startup; `GROQ_API_KEY` is optional. If you add a newly issued key, restart the script. Do not reuse a previously exposed key.
+
+Manual launch, when you want each server in its own terminal:
+
 
 ```bash
 cd backend
@@ -18,7 +30,7 @@ python3.12 -m venv --clear .venv
 .venv/bin/python -m uvicorn app.main:app --reload
 ```
 
-In terminal 2:
+In the second terminal:
 
 ```bash
 cd frontend
@@ -26,7 +38,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL Vite prints (normally `http://localhost:5173`) and select **Load today's snapshot**. Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
+Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
 
 ## Tests and build
 
@@ -46,6 +58,7 @@ The baseline automated check covers 600 t planned, 560 t received, 500 t exporte
 
 If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run the three backend commands above from `backend/`. If `python3.12` is missing, install Python 3.12 first. Use `.venv/bin/python --version` to confirm the selected interpreter.
 
+
 ## Policy and architecture
 
 - `backend/app/engine/validators.py`: parses the supplied workbook, checks IDs, segment rules, quantity increments and station/reference data.
@@ -57,7 +70,22 @@ Planned farm mix is for expected-versus-actual comparison only; it is never allo
 
 ## Optional model configuration
 
-Copy `backend/.env.example` to `backend/.env` and set `GROQ_API_KEY` locally if you want to try the hosted explanation path. Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+`./start.sh` creates `backend/.env` from `.env.example` if missing. Set `GROQ_API_KEY` locally if you want hosted explanations; `GROQ_MODEL` selects the model (default: `openai/gpt-oss-20b`). Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+
+If Groq returns `model_not_found`, list the model IDs reported for your key and set `GROQ_MODEL` in `backend/.env` to a supported chat model from that list:
+
+```bash
+cd backend
+.venv/bin/python - <<'PY'
+from dotenv import load_dotenv
+load_dotenv('.env')
+from groq import Groq
+for model in Groq().models.list().data:
+    print(model.id)
+PY
+```
+
+Restart `./start.sh` after changing `.env`. The model list prints IDs only; never paste your key in a terminal command or issue report.
 
 ## Submission notes
 
