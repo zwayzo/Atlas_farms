@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://atlas-farms.onrender.com/api/:path*"
+    }
+  ]
+}
