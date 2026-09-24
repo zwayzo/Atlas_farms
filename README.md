@@ -4,19 +4,18 @@ Decision support for a fictional daily Production–Commercial committee. The Fa
 
 ## Requirements
 
-- Python 3.11+ and Node.js 20.19+ or 22.12+
+- Python 3.12 (tested) and Node.js 20.19+ or 22.12+
 - No paid service or API key is needed for the plan or the deterministic assistant summary.
 
 ## Run locally
 
-From the repository root, in terminal 1:
+From the repository root, in terminal 1. On macOS, use Python 3.12 to create a fresh virtual environment, then call its Python explicitly:
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv/Scripts/activate
-python -m pip install -r app/requirements.txt
-uvicorn app.main:app --reload
+python3.12 -m venv --clear .venv
+.venv/bin/python -m pip install -r app/requirements.txt
+.venv/bin/python -m uvicorn app.main:app --reload
 ```
 
 In terminal 2:
@@ -31,10 +30,10 @@ Open the URL Vite prints (normally `http://localhost:5173`) and select **Load to
 
 ## Tests and build
 
-With the backend virtual environment active, from `backend/`:
+From `backend/`:
 
 ```bash
-python -m pytest -q tests
+.venv/bin/python -m pytest -q tests
 ```
 
 From `frontend/`:
@@ -44,6 +43,8 @@ npm run build
 ```
 
 The baseline automated check covers 600 t planned, 560 t received, 500 t exported, 60 t local, €549,500 export revenue, €4,500 local value, and the three partial clients C02, C09, C08. Other tests cover allocation ordering, compatibility, capacity, invalid Excel values, and assistant output.
+
+If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run the three backend commands above from `backend/`. If `python3.12` is missing, install Python 3.12 first. Use `.venv/bin/python --version` to confirm the selected interpreter.
 
 ## Policy and architecture
 
