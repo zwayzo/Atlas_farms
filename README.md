@@ -1,98 +1,78 @@
 # Atlas Fresh — Daily Apple Export Planner
 
-Decision support for a fictional daily Production–Commercial committee. The FastAPI server validates the supplied Excel workbook and applies a deterministic allocation policy; the React workspace displays the resulting production gaps, client orders, farm-to-client allocations, and local residual. Final execution remains a human decision.
+A browser workspace for the fictional Atlas Fresh daily Production–Commercial committee. It compares planned and actual farm production, calculates a deterministic export allocation, shows client service status, and highlights fruit sent to the local market. The committee remains responsible for approving the plan.
 
 ## Requirements
 
-- Python 3.12 (tested) and Node.js 20.19+ or 22.12+
-- No paid service or API key is needed for the plan or the deterministic assistant summary.
+- Python 3.12 (`python3.12` available in the terminal)
+- Node.js 20.19+ or 22.12+, with npm
+- No API key or paid service is required for the planner
 
-## Run locally
+## Start the application
 
-
-From the repository root, start both servers with one command:
+From a clean clone:
 
 ```bash
+git clone https://github.com/zwayzo/Atlas_farms.git
+cd Atlas_farms
 ./start.sh
 ```
 
-The first run creates a Python 3.12 virtual environment, installs backend and frontend dependencies, and creates `backend/.env` from `.env.example` if it does not exist. Later runs reuse them. Open `http://127.0.0.1:5173` and press **Load today's snapshot**. Press Ctrl+C in the terminal to stop both servers. If Python 3.12 or Node.js/npm is missing, the script shows what to install.
+The script installs missing dependencies, creates `backend/.venv` and `backend/.env` if necessary, then starts the backend and frontend. Open **http://127.0.0.1:5173** and click **Load today's snapshot**. Press Ctrl+C to stop both servers.
 
-The script never overwrites an existing `.env`. The app reads `backend/.env` on startup; `GROQ_API_KEY` is optional. If you add a newly issued key, restart the script. Do not reuse a previously exposed key.
+Backend API documentation: **http://127.0.0.1:8000/docs**.
 
-Manual launch, when you want each server in its own terminal:
 
+## Run tests and build
+
+After running `./start.sh` once to install dependencies, open another terminal at the repository root.
+
+Backend tests:
 
 ```bash
-cd backend
-python3.12 -m venv --clear .venv
-.venv/bin/python -m pip install -r app/requirements.txt
-.venv/bin/python -m uvicorn app.main:app --reload
+backend/.venv/bin/python -m pytest -q backend/tests
 ```
 
-In the second terminal:
+Frontend production build:
 
 ```bash
 cd frontend
-npm ci
-npm run dev
-```
-
-Vite proxies `/api` to `http://127.0.0.1:8000`. The source workbook is kept in `backend/app/data/seed.xlsx` and is read on each seed request. To try a modified workbook without changing the seed, POST an `.xlsx` to `/api/plan` with multipart field `file` (the API docs are at `http://127.0.0.1:8000/docs`).
-
-## Tests and build
-
-From `backend/`:
-
-```bash
-.venv/bin/python -m pytest -q tests
-```
-
-From `frontend/`:
-
-```bash
 npm run build
 ```
 
-The baseline automated check covers 600 t planned, 560 t received, 500 t exported, 60 t local, €549,500 export revenue, €4,500 local value, and the three partial clients C02, C09, C08. Other tests cover allocation ordering, compatibility, capacity, invalid Excel values, and assistant output.
+Use `backend/.venv/bin/python`, not a global Python 3.14 installation. During review, **15 backend tests passed** and the frontend build succeeded. The tests emitted one nonfatal Starlette deprecation warning.
 
-If the traceback mentions `/Library/Frameworks/Python.framework/Versions/3.14/...`, the global Python is being used. Run the three backend commands above from `backend/`. If `python3.12` is missing, install Python 3.12 first. Use `.venv/bin/python --version` to confirm the selected interpreter.
+## How the plan works
 
+1. The server loads and validates the supplied daily workbook. The interface loads `backend/app/data/seed.xlsx`; the original workbook remains in the repository root. A modified workbook can also be sent to `POST /api/plan` as an `.xlsx` multipart upload with field name `file`.
+2. Production compares expected farm capacity and expected A/B/C/D mix with actual receipts. Only **actual** fruit can be allocated.
+3. The engine processes clients by export price, highest first; ties are broken by client ID. `EXACT` accepts only the requested segment. `MINIMUM` accepts the requested segment or a better one.
+4. Compatible supply is selected by the smallest quality upgrade, then farm ID. The engine allocates in 5 t increments without exceeding client demand, farm supply or station capacity.
+5. Every unexported tonne goes to the local market. Its value is calculated from its segment reference price and the workbook's local-market ratio. The assistant explains the computed plan but cannot change it.
 
-## Policy and architecture
+The supplied workbook produces **600 t planned, 560 t received, 500 t exported, 60 t local, an 89.3% export rate, €549,500 export revenue, €4,500 local value and €554,000 total value**. C02 and C09 are partial because compatible fruit runs short. C08 is partial because station capacity is reached.
 
-- `backend/app/engine/validators.py`: parses the supplied workbook, checks IDs, segment rules, quantity increments and station/reference data.
-- `backend/app/engine/allocation.py`: server-side policy. Clients are ordered by price descending then ID; compatible supply is ordered by smallest quality upgrade then farm ID. It allocates in 5 t steps within available supply, demand and station capacity. Unexported supply goes to the local market at its segment reference price times the local ratio.
-- `backend/app/main.py`: `/api/plan/seed`, `/api/plan` and read-only `/api/assistant` routes.
-- `frontend/src/`: a single workspace for production, commercial, allocation and assistant views.
+## Architecture and assumptions
 
-Planned farm mix is for expected-versus-actual comparison only; it is never allocated as real supply. Local reference prices do not determine client priority. The assistant never changes the plan.
+- `backend/app/engine/validators.py`: workbook parsing and input validation. Invalid IDs, modes, segments, mixes, prices and quantities are rejected rather than silently corrected.
+- `backend/app/engine/allocation.py`: deterministic allocation, client statuses, local residual and KPIs.
+- `backend/app/main.py`: seed, workbook-upload and assistant API routes.
+- `frontend/src/`: React/Vite planning workspace.
 
-## Optional model configuration
+This is one fictional daily snapshot with one export station. The source workbook does not assign farms to clients; the engine creates those traceable assignments. The result supports a human decision and does not execute it.
 
-`./start.sh` creates `backend/.env` from `.env.example` if missing. Set `GROQ_API_KEY` locally if you want hosted explanations; `GROQ_MODEL` selects the model (default: `openai/gpt-oss-20b`). Never commit `.env`. Without a key, the interface uses a labelled deterministic summary. The core app works without it.
+## Verification, limitations and next steps
 
-If Groq returns `model_not_found`, list the model IDs reported for your key and set `GROQ_MODEL` in `backend/.env` to a supported chat model from that list:
+**AI tools used:** ChatGPT/Codex assisted with code review, debugging, tests and documentation. The supplied baseline, recalculation after an input change, invalid-workbook rejection, backend tests and frontend build were checked.
 
-```bash
-cd backend
-.venv/bin/python - <<'PY'
-from dotenv import load_dotenv
-load_dotenv('.env')
-from groq import Groq
-for model in Groq().models.list().data:
-    print(model.id)
-PY
-```
+**Approximate time spent:** 13 hours, including debugging and verification. This is about one hour beyond the suggested 10–12 hour timebox.
 
-Restart `./start.sh` after changing `.env`. The model list prints IDs only; never paste your key in a terminal command or issue report.
+**Limitations and deliberate omissions:** No deployment or multi-day forecasting. Workbook upload exists through the API but has no button in the interface. Hosted assistant responses reject unknown farm/client IDs, but their numerical claims are not fully checked against the plan. The interface does not explicitly show which farm shortfall contributes to which client risk. Validation errors and server failures share one retry screen. Keyboard use and layouts at 1024 px and 1440 px have not been formally verified.
 
-## Submission notes
+**Next three production steps:**
 
-- AI assistance: used for code review, bug fixes, and the automated test suite. Verify and describe your own use of AI before submission.
-- Approximate total time spent: **[candidate: fill in before sending]**.
-- Current limitations: the hosted model path requires a user-provided key. Model output rejects unknown farm/client IDs but does not fully check every generated numeric claim; review model explanations before making a decision. There is an API workbook upload but no upload control in the interface.
-- Intentional omissions: deployment and forecasting across multiple days; this assessment uses one supplied daily snapshot. **[candidate: adjust to reflect your actual timebox]**.
-- Next three production steps: (1) show segment-level planned/actual gaps and connect them to client shortages; (2) move assistant context validation and fallback summaries fully server-side, with clearer provider error states; (3) add operational access controls and monitoring.
+1. Validate assistant numbers and evidence against the computed plan, with a server-side fallback.
+2. Show the connection between farm shortages and affected clients; improve error states and accessibility checks.
+3. Add access controls, monitoring and decision history if the tool becomes a production product.
 
-The candidate brief and original supplied workbook are included in the repository root for reference. Record a 3–5 minute walkthrough and include its URL when submitting.
+The case and data are fictional. Authentication, persistence, multi-day optimization and a paid AI service are outside this assessment. The submission email should contain the repository URL, a **3–5 minute walkthrough video URL**, and the approximate time spent. A deployed URL is optional.
