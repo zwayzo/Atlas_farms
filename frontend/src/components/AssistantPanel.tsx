@@ -71,7 +71,13 @@ export default function AssistantPanel({ plan }) {
         // convention: backend returns this when no key/model is configured
         throw new Error('NO_KEY');
       }
-      if (!res.ok) throw new Error(res.status === 502 ? 'PROVIDER_FAILURE' : 'REQUEST_FAILED');
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}));
+        if (res.status === 502 && String(errorBody.detail || '').startsWith('MODEL_UNAVAILABLE')) {
+          throw new Error('MODEL_UNAVAILABLE');
+        }
+        throw new Error(res.status === 502 ? 'PROVIDER_FAILURE' : 'REQUEST_FAILED');
+      }
       const data = await res.json();
       setMode('llm');
       setAnswer({ text: data.answer, ids: data.evidence_ids || [] });
@@ -80,6 +86,7 @@ export default function AssistantPanel({ plan }) {
       const fallback = deterministicAnswer(q.id, plan);
       setMode('deterministic');
       setFallbackReason(e.message === 'NO_KEY' ? 'No AI model configured' :
+        e.message === 'MODEL_UNAVAILABLE' ? 'Configured Groq model unavailable; check GROQ_MODEL in backend/.env' :
         e.message === 'PROVIDER_FAILURE' ? 'AI provider unavailable or returned invalid output' :
         'Assistant request failed');
       setAnswer(fallback);

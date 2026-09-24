@@ -25,6 +25,10 @@ def is_configured() -> bool:
     return bool(os.environ.get("GROQ_API_KEY"))
 
 
+def configured_model() -> str:
+    return os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
+
+
 def _extract_valid_ids(context: dict) -> set:
     ids = set()
     for row in context.get("farms") or []:
@@ -61,9 +65,10 @@ def ask_assistant(question_id: str, context: dict) -> dict:
     try:
         from groq import Groq
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        model = configured_model()
 
         resp = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": (
@@ -77,7 +82,12 @@ def ask_assistant(question_id: str, context: dict) -> dict:
         )
         answer_text = resp.choices[0].message.content.strip()
     except Exception as e:
-        raise RuntimeError(f"PROVIDER_FAILURE: {e}")
+        if getattr(e, 'status_code', None) == 404:
+            raise RuntimeError(
+                f"MODEL_UNAVAILABLE: {configured_model()}. Check GROQ_MODEL in backend/.env "
+                "and which models your account can access."
+            ) from e
+        raise RuntimeError(f"PROVIDER_FAILURE: {type(e).__name__}") from e
 
     # Validate: strip any ID the model mentions that isn't real, don't trust it blindly.
     valid_ids = _extract_valid_ids(context)
